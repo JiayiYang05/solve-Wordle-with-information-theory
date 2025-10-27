@@ -16,12 +16,6 @@ class WordleSolver:
         self.total_frequency = sum(self.word_frequencies.values())
         self.pattern_cache = {}
         
-        # Precompute common starting words for first guess
-        self.best_first_guesses = [
-            ("SLATE", 5.885), ("REAST", 5.882), ("CRATE", 5.880), 
-            ("TRACE", 5.878), ("SLANE", 5.876)
-        ]
-        
     def get_wordle_answers(self) -> List[str]:
         """Get a smaller subset of Wordle answers for testing."""
         # Using a smaller subset for testing - first 100 words
@@ -68,20 +62,17 @@ class WordleSolver:
     def calculate_entropy_for_guess(self, guess: str, possible_answers: List[str]) -> float:
         """Calculate the entropy of a guess given possible answers."""
         pattern_counts = Counter()
-        total_weight = 0
         
         for answer in possible_answers:
             pattern = self.get_pattern(guess, answer)
-            weight = self.word_frequencies.get(answer, 1)
-            pattern_counts[pattern] += weight
-            total_weight += weight
+            pattern_counts[pattern] += 1
         
-        if total_weight == 0:
+        if len(possible_answers) == 0:
             return 0
             
         entropy = 0
         for count in pattern_counts.values():
-            p = count / total_weight
+            p = count / len(possible_answers)
             entropy -= p * math.log2(p)
         
         return entropy
@@ -94,13 +85,9 @@ class WordleSolver:
         if n_answers <= 2:
             return [(word, math.log2(n_answers)) for word in possible_answers]
         
-        # For first guess with many possibilities, use precomputed values
-        if n_answers == len(self.words):
-            return self.best_first_guesses[:top_n]
-        
-        # Calculate entropy for candidate guesses (use remaining answers as candidates)
+        # Calculate entropy only for words that are in the possible answers
         word_scores = []
-        for word in possible_answers[:50]:  # Limit to first 50 for performance
+        for word in possible_answers:
             entropy = self.calculate_entropy_for_guess(word, possible_answers)
             word_scores.append((word, entropy))
         
@@ -131,7 +118,7 @@ class WordleSolver:
             
             print("Calculating best guesses...")
             
-            # Get best guesses
+            # Get best guesses - ONLY from possible answers
             best_guesses = self.get_best_guesses(possible_answers)
             
             print("\nTop recommendations:")
@@ -156,8 +143,10 @@ class WordleSolver:
                 elif not guess.isalpha():
                     print("Guess must contain only letters!")
                     continue
-                elif guess not in self.words:
-                    print(f"'{guess}' is not in the word list. Try again.")
+                elif guess not in possible_answers:  # Changed from self.words to possible_answers
+                    print(f"❌ '{guess}' is not in the remaining possible answers! Try one of the recommendations.")
+                    # Show the recommendations again for convenience
+                    print("Valid recommendations:", ', '.join([word for word, _ in best_guesses[:5]]))
                     continue
                 else:
                     break
@@ -238,7 +227,7 @@ class WordleSolver:
         for attempt in range(max_attempts):
             print(f"Remaining possibilities: {len(possible_answers)}")
             
-            # Get best guess
+            # Get best guess - ONLY from possible answers
             best_guesses = self.get_best_guesses(possible_answers, top_n=1)
             guess = best_guesses[0][0]
             
@@ -282,6 +271,7 @@ def main():
     try:
         solver = WordleSolver(use_frequency=use_frequency)
         print(f"Loaded {len(solver.words)} possible answers")
+        print(f"Sample words: {', '.join(solver.words[:5])}...")
     except Exception as e:
         print(f"Error loading word list: {e}")
         return
