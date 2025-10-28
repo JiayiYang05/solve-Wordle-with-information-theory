@@ -1,10 +1,17 @@
-import gzip
 import requests
+import gzip
 import io
 import pandas as pd
-from collections import defaultdict
-import os
+import math
 import numpy as np
+from collections import Counter
+from collections import defaultdict
+from typing import List, Tuple, Dict, Set
+import random
+from numba import jit  # For JIT compilation
+import pickle
+import os
+import time
 
 
 class FastWordleSolver:
@@ -45,7 +52,7 @@ class FastWordleSolver:
         response = requests.get(url)
         words = [word.strip().upper() for word in response.text.split('\n') if len(word.strip()) == 5]
         return words
-    
+
     def get_cache_files(self):
         """Return paths to cache files."""
         return {
@@ -251,19 +258,19 @@ class FastWordleSolver:
     def normalize_frequencies_sigmoid(self, frequencies: Dict[str, float]) -> Dict[str, float]:
         """Normalize frequencies using sigmoid function to [0,1] range."""
         freq_values = np.array(list(frequencies.values()))
-        
+
         # Log transform first to handle exponential distribution of word frequencies
         log_freq = np.log1p(freq_values)  # log(1 + x) to handle zeros
-        
+
         # Sigmoid normalization
         # Center the data around 0 for better sigmoid behavior
         mean_log = np.mean(log_freq)
         std_log = np.std(log_freq)
         centered_log = (log_freq - mean_log) / std_log
-        
+
         # Apply sigmoid
         normalized = 1 / (1 + np.exp(-centered_log))
-        
+
         # Create normalized dictionary
         words = list(frequencies.keys())
         return dict(zip(words, normalized))
@@ -271,22 +278,22 @@ class FastWordleSolver:
     def normalize_frequencies_log_scale(self, frequencies: Dict[str, float]) -> Dict[str, float]:
         """Normalize frequencies using log scaling."""
         freq_values = np.array(list(frequencies.values()))
-        
+
         # Log transform and scale to [0,1]
         log_freq = np.log1p(freq_values)
         normalized = (log_freq - np.min(log_freq)) / (np.max(log_freq) - np.min(log_freq))
-        
+
         words = list(frequencies.keys())
         return dict(zip(words, normalized))
 
     def normalize_frequencies_softmax(self, frequencies: Dict[str, float]) -> Dict[str, float]:
         """Normalize frequencies using softmax (turns them into probabilities)."""
         freq_values = np.array(list(frequencies.values()))
-        
+
         # Softmax normalization
         exp_freq = np.exp(freq_values - np.max(freq_values))  # Subtract max for numerical stability
         softmax_freq = exp_freq / np.sum(exp_freq)
-        
+
         words = list(frequencies.keys())
         return dict(zip(words, softmax_freq))
 
@@ -297,7 +304,7 @@ class FastWordleSolver:
         # Convert to ranks and normalize
         ranks = np.argsort(np.argsort(freq_values)) + 1  # Get ranks (1-based)
         normalized = ranks / len(ranks)  # Scale to [0,1]
-        
+
         words = list(frequencies.keys())
         return dict(zip(words, normalized))
 
@@ -306,29 +313,29 @@ class FastWordleSolver:
         """Even faster using precomputed frequency array."""
         if len(possible_indices) == 0:
             return 0
-        
+
         # Precompute frequency array for all words (do this once in __init__)
         if not hasattr(self, 'frequency_array'):
             self.frequency_array = np.array([self.word_frequencies[word] for word in self.words])
-        
+
         # Vectorized operations
         patterns = self.pattern_matrix[guess_idx, possible_indices]
         weights = self.frequency_array[possible_indices]
-        
+
         # Group by pattern and sum weights
         unique_patterns, pattern_indices = np.unique(patterns, return_inverse=True)
         pattern_weights = np.bincount(pattern_indices, weights=weights)
         total_weight = np.sum(weights)
-        
+
         # Calculate entropy
         probabilities = pattern_weights / total_weight
         entropy = -np.sum(probabilities * np.log2(probabilities + 1e-10))
-        
+
         return entropy
 
     def pattern_to_int(self, pattern: str) -> int:
         """Convert pattern string to integer for faster processing."""
-        
+
         # G=2, Y=1, X=0, so pattern becomes a base-3 number
         mapping = {'G': 2, 'Y': 1, 'X': 0}
         result = 0
@@ -394,31 +401,31 @@ class FastWordleSolver:
         # Keep only words that match the pattern
         return possible_indices[patterns == pattern_int]
 
-    def get_best_guesses_with_frequency_fast(self, possible_indices: np.ndarray, top_n: int = 10, 
+    def get_best_guesses_with_frequency_fast(self, possible_indices: np.ndarray, top_n: int = 10,
                                           max_candidates: int = 100) -> List[Tuple[str, float, float]]:
         """Optimized version using vectorized entropy calculation."""
         n_possible = len(possible_indices)
-        
+
         if n_possible <= 2:
             words = [self.idx_to_word[idx] for idx in possible_indices]
             return [(word, math.log2(n_possible), self.word_frequencies.get(word, 1.0)) for word in words]
-        
+
         # Select candidate guesses
         candidate_indices = possible_indices[:min(max_candidates, len(possible_indices))]
-        
+
         # Calculate entropy for all candidates using vectorized approach
         word_scores = []
         for candidate_idx in candidate_indices:
             entropy = self.calculate_entropy_weighted_super_fast(candidate_idx, possible_indices)
             word = self.idx_to_word[candidate_idx]
             frequency = self.word_frequencies.get(word, 1.0)
-            
+
             # Use log frequency for combined score
             log_freq = math.log(frequency + 1)
-            combined_score = 0.7 * entropy + 0.3 * log_freq
-            
+            combined_score = 0.6 * entropy + 0.4 * log_freq
+
             word_scores.append((word, entropy, frequency, combined_score))
-        
+
         # Sort by combined score
         word_scores.sort(key=lambda x: x[3], reverse=True)
         return [(word, entropy, freq) for word, entropy, freq, _ in word_scores[:top_n]]
@@ -546,78 +553,35 @@ class FastWordleSolver:
         print(f"\nInitial entropy: {initial_entropy:.2f} bits")
         print(f"Information gained per guess: {initial_entropy/len(guesses_made):.2f} bits")
 
-    def main():
-        print("🚀 Optimized Wordle Solver using Information Theory")
-        print("=" * 50)
-
-
-        # Choose version
-        while True:
-            version = input("Choose version (1 for uniform distribution, 2 for frequency-based): ").strip()
-            if version in ['1', '2']:
-                break
-            print("Please enter 1 or 2")
-
-        use_frequency = (version == "2")
-
-        # Initialize solver ONCE
-        print("Initializing Optimized Wordle Solver...")
-        try:
-            solver = FastWordleSolver(use_frequency=use_frequency)
-            print("✅ Solver initialized successfully!")
-        except Exception as e:
-            print(f"Error loading word list: {e}")
-            return
-
-        # Main game loop - keep playing until user quits
-        while True:
-            print("\n" + "="*50)
-            print("🎮 MAIN MENU")
-            print("1. Play a new game")
-            print("2. Performance test (solve multiple words to test speed)")
-            print("3. Quit")
-
-            choice = input("Enter choice (1-3): ").strip()
-
-            if choice == '1':
-                solver.solve_interactive_optimized()
-            elif choice == '2':
-                test_performance(solver)
-            elif choice == '3':
-                print("Thanks for playing! Goodbye! 👋")
-                break
-            else:
-                print("Please enter 1, 2, or 3")
-
-    def test_performance(solver):
+    def test_performance(self):
         """Test the performance of the optimized solver."""
         print("\n🧪 Performance Test")
-        print("Solving 10 random words to test speed...")
 
-        test_words = random.sample(solver.words, min(10, len(solver.words)))
+        # test_words = random.sample(self.words, min(500, len(self.words)))
+        test_words = self.words
         total_attempts = 0
         start_time = time.time()
 
         for i, answer in enumerate(test_words):
-            print(f"\nTest {i+1}/10: {answer}")
-            possible_indices = np.arange(len(solver.words))
-            answer_idx = solver.word_to_idx[answer]
+            print(f"\nTest {i+1}: {answer}")
+            possible_indices = np.arange(len(self.words))
+            answer_idx = self.word_to_idx[answer]
             attempts = 0
 
             for attempt in range(6):
                 attempts += 1
-                best_guesses = solver.get_best_guesses_with_frequency_fast(possible_indices, top_n=1)
+                best_guesses = self.get_best_guesses_with_frequency_fast(possible_indices, top_n=1)
                 guess = best_guesses[0][0]
-                guess_idx = solver.word_to_idx[guess]
-                pattern_int = solver.pattern_matrix[guess_idx, answer_idx]
-                pattern = solver.int_to_pattern(pattern_int)
+                guess_idx = self.word_to_idx[guess]
+                pattern_int = self.pattern_matrix[guess_idx, answer_idx]
+                pattern = self.int_to_pattern(pattern_int)
 
                 if pattern == 'GGGGG':
                     print(f"  Solved in {attempts} attempts: {guess}")
                     total_attempts += attempts
                     break
 
-                possible_indices = solver.filter_words_fast(possible_indices, guess_idx, pattern_int)
+                possible_indices = self.filter_words_fast(possible_indices, guess_idx, pattern_int)
             else:
                 print(f"  Failed to solve in 6 attempts")
                 total_attempts += 6
@@ -632,6 +596,51 @@ class FastWordleSolver:
         print(f"Time per word: {total_time/len(test_words):.2f} seconds")
 
         input("\nPress Enter to return to main menu...")
+    
+def main():
+    print("🚀 Optimized Wordle Solver using Information Theory")
+    print("=" * 50)
+
+
+    # Choose version
+    while True:
+        version = input("Choose version (1 for uniform distribution, 2 for frequency-based): ").strip()
+        if version in ['1', '2']:
+            break
+        print("Please enter 1 or 2")
+
+    use_frequency = (version == "2")
+
+    # Initialize solver ONCE
+    print("Initializing Optimized Wordle Solver...")
+    try:
+        solver = FastWordleSolver(use_frequency=use_frequency)
+        print("✅ Solver initialized successfully!")
+    except Exception as e:
+        print(f"Error loading word list: {e}")
+        return
+
+    # Main game loop - keep playing until user quits
+    while True:
+        print("\n" + "="*50)
+        print("🎮 MAIN MENU")
+        print("1. Play a new game")
+        print("2. Performance test (solve multiple words to test speed)")
+        print("3. Quit")
+
+        choice = input("Enter choice (1-3): ").strip()
+
+        if choice == '1':
+            solver.solve_interactive_optimized()
+        elif choice == '2':
+            solver.test_performance()
+        elif choice == '3':
+            print("Thanks for playing! Goodbye! 👋")
+            break
+        else:
+            print("Please enter 1, 2, or 3")
+
+
 
 if __name__ == "__main__":
     import time
