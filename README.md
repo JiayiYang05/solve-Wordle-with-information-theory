@@ -25,4 +25,23 @@
 1. Run setup.py
 2. Run solver-optimzed-frequency.py
    (Initialization may take a few minutes, since involving matrix precomputation.)
+   
+---
+<br><br>
+## 📸 How it looks?
 
+### 1. Performance Test
+
+<div align="center">
+  <img src="assets/sigmoid-performance-test.gif" width="600" />
+  
+  *Testing performance over all Wordle answers.*
+</div>
+
+### 2. Interactive Mode
+
+<div align="center">
+  <img src="assets/solver-optimized-frequency.gif" width="600" />
+  
+  *Play Wordle with recommended guesses.*
+</div>
