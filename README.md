@@ -30,18 +30,20 @@
 <br><br>
 ## 📸 How it looks?
 
-### 1. Performance Test
+### 1. Interactive Mode
 
 <div align="center">
-  <img src="assets/sigmoid-performance-test.gif" width="600" />
+  <img src="assets/solver-mini-GUI.png" width="95%" />
+  
+  *Play Wordle with recommended guesses.*
+</div>
+
+
+### 2. Performance Test
+
+<div align="center">
+  <img src="assets/sigmoid-performance-test.png" width="50%" />
   
   *Testing performance over all Wordle answers.*
 </div>
 
-### 2. Interactive Mode
-
-<div align="center">
-  <img src="assets/solver-optimized-frequency.gif" width="600" />
-  
-  *Play Wordle with recommended guesses.*
-</div>
