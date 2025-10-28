@@ -1,4 +1,4 @@
-# Performance bottleneck at 4.5 guesses/word
+# Performance bottleneck at 4.6 guesses/word
 This is only slightly above human average.
 The insight here is that we naturally guess more frequent words, while the algorithm treats all words equally (i.e. assume uniform distribution).
 Therefore, we consider frequecy integration to model real-world word likelihood.
@@ -21,4 +21,5 @@ Better approaches:
 # Degrees of Freedom:
 - weight choice: trial and error
 - normalization: softmax, sigmoid, log scaling ...
+
 
