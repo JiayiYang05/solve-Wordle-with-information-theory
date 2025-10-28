@@ -17,3 +17,8 @@ Better approaches:
 - Weighted score: score = α × entropy + β × log(frequency)
 
 - Frequency as tie-breaker: When entropies are close, pick more common word
+
+# Degrees of Freedom:
+- weight choice: trial and error
+- normalization: softmax, sigmoid, log scaling ...
+
