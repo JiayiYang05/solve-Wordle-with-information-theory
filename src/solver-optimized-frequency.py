@@ -464,8 +464,8 @@ class FastWordleSolver:
             best_guesses = self.get_best_guesses_with_frequency_fast(possible_indices)
 
             print("\nTop recommendations:")
-            for i, (word, entropy) in enumerate(best_guesses[:8]):
-                print(f"{i+1:2d}. {word} (entropy: {entropy:.3f})")
+            for i, (word, entropy, freq) in enumerate(best_guesses[:8]):
+                print(f"{i+1:2d}. {word} (entropy: {entropy:.3f}) (freq: {freq:.3f})")
 
             # Get user input
             while True:
